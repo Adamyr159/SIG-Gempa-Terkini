@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Peta Gempa Terkini</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-minimap@3.6.1/dist/Control.MiniMap.min.css" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    #map {
+      height: 100vh;
+      margin: 0 auto;
+      max-width: 100%;
+      position: relative;
+    }
+    #mini-map {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 200px;
+      height: 200px;
+      border: 1px solid #ccc;
+      z-index: 999;
+    }
+    .map-title {
+      font-size: 10px;
+      font-weight: bold;
+      background: rgba(255, 255, 255, 0.8);
+      padding: 10px 20px;
+      border-radius: 5px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    }
+    .legend {
+      background: white;
+      padding: 10px;
+      line-height: 1.5;
+      color: #555;
+    }
+    .legend img.legend-image {
+      width: 20px;
+      height: 20px;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+    .hover-marker {
+      filter: invert(1);
+    }
+    .custom-popup .leaflet-popup-content-wrapper {
+      max-width: 150px !important;
+    }
+    .custom-popup .leaflet-popup-content {
+      font-size: 12px;
+    }
+    .custom-popup .leaflet-popup-content h2 {
+      font-size: 14px;
+      margin: 0;
+      padding: 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="map">
+    <div id="mini-map"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://unpkg.com/leaflet-minimap@3.6.1/dist/Control.MiniMap.min.js"></script>
+  <script>
+    var mainMap = L.map("map").setView([-2.548926, 118.014863], 5);
+    var miniMap = L.map("mini-map").setView([-2.548926, 118.014863], 5);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(mainMap);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+    }).addTo(miniMap);
+
+    function extractLocationName(locationString) {
+      const words = locationString.split(" ");
+      if (words.length > 3) {
+        return words.slice(3).join(" ");
+      } else {
+        return locationString; // Jika kurang dari 3 kata, kembalikan string asli
+      }
+    }
+
+    function extractFirstThreeWords(locationString) {
+      const words = locationString.split(" ");
+      if (words.length >= 3) {
+        return words.slice(0, 3).join(" ");
+      } else {
+        return locationString; // Jika kurang dari 3 kata, kembalikan string asli
+      }
+    }
+
+    // Load earthquake data from API for main map
+    fetch("https://data.bmkg.go.id/DataMKG/TEWS/gempaterkini.json")
+      .then((response) => response.json())
+      .then((data) => {
+        var earthquakes = data.Infogempa.gempa.slice(0, 15);
+
+        earthquakes.forEach(function (quake) {
+          var coords = quake.Coordinates.split(",");
+          var lat = parseFloat(coords[0]);
+          var lon = parseFloat(coords[1]);
+
+          var marker = L.marker([lat, lon]).addTo(mainMap);
+          var location = extractFirstThreeWords(quake.Wilayah);
+          var locationName = extractLocationName(quake.Wilayah);
+          var initialPopupContent = `<h2>Daerah ${locationName}</h2>`;
+          var fullPopupContent = `
+            <div>
+              <h2>Daerah ${locationName}</h2>
+              <p><b>Tanggal:</b> ${quake.Tanggal}</p>
+              <p><b>Jam:</b> ${quake.Jam}</p>
+              <p><b>Magnitude:</b> ${quake.Magnitude}</p>
+              <p><b>Kedalaman:</b> ${quake.Kedalaman}</p>
+              <p><b>Wilayah:</b> ${location}</p>
+              <p><b>Potensi:</b> ${quake.Potensi}</p>
+            </div>`;
+
+          marker.bindPopup(initialPopupContent).openPopup();
+
+          marker.on("mouseover", function () {
+            this._icon.classList.add("hover-marker");
+            this.setPopupContent(fullPopupContent).openPopup();
+          });
+
+          marker.on("mouseout", function () {
+            this._icon.classList.remove("hover-marker");
+            this.setPopupContent(initialPopupContent).openPopup();
+          });
+        });
+      })
+      .catch((error) =>
+        console.error("Error loading earthquake data for main map:", error)
+      );
+
+    // Load earthquake data from API for mini map (only one earthquake)
+    fetch("https://data.bmkg.go.id/DataMKG/TEWS/autogempa.json")
+      .then((response) => response.json())
+      .then((data) => {
+        var quake = data.Infogempa.gempa;
+
+        var coords = quake.Coordinates.split(",");
+        var lat = parseFloat(coords[0]);
+        var lon = parseFloat(coords[1]);
+
+        // Update miniMap view with the latest earthquake coordinates
+        miniMap.setView([lat, lon], 4);
+
+        var marker = L.marker([lat, lon]).addTo(miniMap);
+        var locationName = extractLocationName(quake.Wilayah);
+        var popupContent = `<h2 class="map-title">Daerah ${locationName}</h2>`;
+        marker.bindPopup(popupContent).openPopup(); // Bind and open popup immediately
+
+      })
+      .catch((error) =>
+        console.error("Error loading earthquake data for mini map:", error)
+      );
+
+    // Add MiniMap control to the main map
+    var miniMapLayer = L.tileLayer("https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    });
+
+    var miniMapControl = new L.Control.MiniMap(miniMapLayer, {
+      toggleDisplay: true,
+      minimized: false,
+      position: 'topleft'
+    }).addTo(mainMap);
+
+    // Add legend to the map
+    var legend = L.control({ position: "topleft" });
+
+    legend.onAdd = function (map) {
+      var div = L.DomUtil.create("div", "legend");
+      div.innerHTML += '<img src="gempa-default.png" class="legend-image" alt="Gempa Default"> Gempa Default<br>';
+      div.innerHTML += '<img src="gempa-hover.png" class="legend-image" alt="Gempa Active"> Gempa Active<br>';
+      return div;
+    };
+
+    legend.addTo(mainMap);
+  </script>
+</body>
+</html>
